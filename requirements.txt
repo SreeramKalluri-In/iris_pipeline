@@ -1,0 +1,6 @@
+# For the Hugging Face Space (Streamlit) deployment.
+streamlit>=1.28.0
+huggingface-hub>=0.20.0
+scikit-learn
+pandas
+joblib

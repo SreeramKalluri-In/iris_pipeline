@@ -1,0 +1,5 @@
+# Only needed for the monitoring step (monitor.py).
+# For the deployment step, use requirements.txt instead.
+evidently>=1.0.0
+pandas
+numpy
