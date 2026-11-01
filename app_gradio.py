@@ -5,8 +5,15 @@ Gradio version (drop-in replacement for app.py's Streamlit UI).
 HF Spaces runs this on the free CPU tier (zero GPUs) — Gradio is the
 Space type for that, and it listens on port 7860 by default.
 
-Run locally with:
-    uv run python app_gradio.py
+Test locally first:
+    uv run python app_gradio.py --self-test   # headless: runs two sample
+                                               # predictions, no server
+    uv run python app_gradio.py                # serves http://127.0.0.1:7860
+                                               # and opens your browser
+    uv run python app_gradio.py --port 7861    # custom local port
+
+On a Space the same entry point automatically binds 0.0.0.0:7860
+(detected via the SPACE_ID env var Gradio sets in Spaces).
 """
 
 import joblib
@@ -120,5 +127,38 @@ demo = gr.Interface(
 )
 
 if __name__ == "__main__":
-    # 0.0.0.0 + 7860 is what a Hugging Face Space expects.
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description="Iris Gradio app")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run two sample predictions headlessly and exit (no server)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=7860,
+        help="local server port (default 7860)",
+    )
+    args = parser.parse_args()
+
+    if args.self_test:
+        # Quick logic check without starting a server: one familiar flower,
+        # one deliberately out-of-distribution set.
+        for sample in ((5.5, 3.0, 4.0, 1.0), (15.0, 0.5, 8.0, 3.0)):
+            result_md, monitor_md = predict(*sample)
+            print(f"input={sample}\n")
+            print(result_md)
+            print()
+            print(monitor_md)
+            print("=" * 60)
+        raise SystemExit(0)
+
+    if os.environ.get("SPACE_ID"):
+        # Hugging Face Space: bind on all interfaces, port 7860.
+        demo.launch(server_name="0.0.0.0", server_port=7860)
+    else:
+        # Local dev: loopback only, browser opens automatically.
+        demo.launch(server_name="127.0.0.1", server_port=args.port)

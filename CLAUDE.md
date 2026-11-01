@@ -24,8 +24,13 @@ docker run --rm -p 7860:7860 iris-space   # app listens on 7860, not 8501
 ```
 
 `app_gradio.py` is a Gradio port of `app.py` for HF Spaces on the free CPU
-tier (zero GPU). It runs standalone: `uv run python app_gradio.py` binds
-`0.0.0.0:7860`. Both app files load `iris_model.joblib` +
+tier (zero GPU). Launch mode is detected automatically:
+- Local: `uv run python app_gradio.py` serves `127.0.0.1:7860` and opens a
+  browser; `--port 7861` for a different port; `--self-test` runs two
+  sample predictions headlessly (no server) for a quick logic check.
+- Space: when the `SPACE_ID` env var is present it binds `0.0.0.0:7860`
+  instead.
+Both app files load `iris_model.joblib` +
 `training_reference.csv` at import time — keep them in sync if you change the
 prediction or drift-panel logic. Gradio is pinned to `6.31.0` (pinned like
 evidently — the API changes between major versions).
