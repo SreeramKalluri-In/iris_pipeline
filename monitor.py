@@ -1,105 +1,133 @@
 """
-Monitoring step - uses Evidently (free, open-source, Apache-2.0 license).
+Iris model monitoring with Evidently 0.7.x.
 
-Requires (see requirements-monitoring.txt):  pip install -r requirements-monitoring.txt
+Creates:
+1. drift_report.html        - data quality + feature distribution drift
+2. performance_report.html  - classification performance metrics
 
-What this does, in plain language:
-  1. DATA DRIFT check  - "Are the flowers arriving at the greenhouse still
-     the same KIND of flowers the model learned from?" We compare a fresh
-     batch of input against the training baseline. In a real system this
-     batch is your web app's live logs; here we SIMULATE one and nudge two
-     measurements up, so the check has something to catch.
-  2. PERFORMANCE check - "Is the model still right about the same fraction
-     of answers?" We re-grade its saved test-set predictions.
-
-Run it:  python monitor.py
-It writes two standalone HTML dashboards you open in any browser:
-     drift_report.html         - data quality + data drift
-     performance_report.html   - model accuracy, precision, recall, F1
+Evidently 0.7 changed the public API compared to 0.6:
+- Report / Dataset / DataDefinition are imported from the top level
+- presets live in `evidently.presets`, and the old DataQualityPreset
+  was renamed DataSummaryPreset
+- report.run() now takes (current_data, reference_data) and returns a
+  Snapshot; the snapshot saves the HTML report
+- column mapping is done with a DataDefinition (e.g. which columns are
+  the target and the prediction) instead of a ColumnMapping object
 """
 
 import numpy as np
 import pandas as pd
 
-from evidently import ColumnMapping
-from evidently.metrics import (
-    ClassificationPerformanceMetric,
-    DataDriftPresetMetric,
-    DataQualityPresetMetric,
+from evidently import DataDefinition, Dataset, Report
+from evidently.core.datasets import MulticlassClassification
+from evidently.presets import (
+    ClassificationPreset,
+    DataDriftPreset,
+    DataSummaryPreset,
 )
-from evidently.report import Report
+
 
 # ------------------------------------------------------------------
-# 1. Load the pieces we need to compare
+# 1. Load reference data and create simulated incoming data
 # ------------------------------------------------------------------
-# Baseline = what the model learned from (4 measurements + true species).
+# Reference = training data used by the model.
+# It contains four measurements plus the true species label.
 reference = pd.read_csv("training_reference.csv")
 reference_features = reference.drop(columns=["target"])
 
-# "Incoming" data = a fresh batch of flowers that just arrived.
-# We start from the baseline and NUDGE two measurements upward,
-# simulating "the florists started sending us different flowers".
+# Simulate a new batch of incoming flowers by shifting two features upward.
 incoming = reference_features.copy()
-incoming["petal length (cm)"] = np.clip(
-    incoming["petal length (cm)"] + 1.2, 0.0, None)   # shifted up
-incoming["petal width (cm)"] = np.clip(
-    incoming["petal width (cm)"] + 0.4, 0.0, None)     # shifted up
 
-# The model's saved answers on the test set (true label + its guess).
+incoming["petal length (cm)"] = np.clip(
+    incoming["petal length (cm)"] + 1.2,
+    0.0,
+    None,
+)
+
+incoming["petal width (cm)"] = np.clip(
+    incoming["petal width (cm)"] + 0.4,
+    0.0,
+    None,
+)
+
+# Load saved model predictions.
+# Expected columns: target, predicted
 predictions = pd.read_csv("test_predictions.csv")
 
+
 # ------------------------------------------------------------------
-# 2. Report #1 - data quality + data drift
+# 2. Data quality and data drift report
 # ------------------------------------------------------------------
-# No target column needed here: we're only looking at the measurements.
-drift_report = Report(metrics=[
-    DataQualityPresetMetric(),   # blanks, unexpected values, new columns
-    DataDriftPresetMetric(),    # distribution shift vs. the reference
-])
-drift_report.run(
-    reference_data=reference_features,
-    current_data=incoming,
-    column_mapping=ColumnMapping(),
+# This report compares incoming feature data with the training baseline.
+# It does not require model predictions.
+#
+# 0.7 API: wrap each DataFrame in a Dataset, and pass CURRENT data first,
+# REFERENCE data second (the reverse of the 0.6 order). The presets are
+# passed to the Report; DataSummaryPreset covers the old data-quality
+# checks and DataDriftPreset compares distributions between the two.
+drift_report = Report(
+    [
+        DataSummaryPreset(),
+        DataDriftPreset(),
+    ]
 )
 
-# ------------------------------------------------------------------
-# 3. Report #2 - model performance
-# ------------------------------------------------------------------
-# Tell Evidently which column is the truth ("target") and which column
-# is the model's guess ("predicted").
-perf_report = Report(metrics=[ClassificationPerformanceMetric()])
-perf_report.run(
-    predictions=predictions,
-    column_mapping=ColumnMapping(target="target", prediction="predicted"),
+drift_snapshot = drift_report.run(
+    Dataset.from_pandas(incoming),
+    Dataset.from_pandas(reference_features),
 )
 
-# ------------------------------------------------------------------
-# 4. Save both as HTML dashboards and open them in your browser
-# ------------------------------------------------------------------
-# save_html() has the same API in Evidently 0.x and 1.x, so this works
-# either way; open_in_browser pops them up automatically.
-drift_report.save_html("drift_report.html", open_in_browser=True)
-perf_report.save_html("performance_report.html", open_in_browser=True)
-print("Wrote drift_report.html and performance_report.html "
-      "(open them in any browser).")
+drift_snapshot.save_html("drift_report.html")
+
 
 # ------------------------------------------------------------------
-# 5. How to read them
+# 3. Classification performance report
 # ------------------------------------------------------------------
-print("""
+# This report evaluates the model using true labels and predicted labels.
+# 0.7 API: tell Evidently which column is the target and which is the
+# model's prediction with a DataDefinition (0.6 used ColumnMapping).
+# MulticlassClassification fits our three iris species; it can also
+# carry probability columns, but we only have plain label predictions.
+classification_definition = DataDefinition(
+    classification=[
+        MulticlassClassification(
+            target="target",
+            prediction_labels="predicted",
+        )
+    ]
+)
+
+performance_report = Report([ClassificationPreset()])
+
+performance_snapshot = performance_report.run(
+    Dataset.from_pandas(predictions, data_definition=classification_definition),
+    None,
+)
+
+performance_snapshot.save_html("performance_report.html")
+
+
+# ------------------------------------------------------------------
+# 4. Summary
+# ------------------------------------------------------------------
+print("Monitoring reports created successfully:")
+print("- drift_report.html")
+print("- performance_report.html")
+
+print(
+    """
 HOW TO READ THE REPORTS
-----------------------
+-----------------------
 drift_report.html
-  * DATA QUALITY - red flags for new missing values, wrong types, or
-    values outside known ranges.
-  * DATA DRIFT   - for each measurement, compares "incoming" vs the
-    training baseline. Green = still looks the same. The two columns
-    we intentionally nudged (petal length & petal width) should be
-    flagged here - that's the check doing its job.
+- DATA SUMMARY shows missing values, feature statistics, and data issues.
+- DATA DRIFT compares incoming measurements with the training baseline.
+- petal length (cm) and petal width (cm) should be flagged because they
+  were intentionally shifted upward.
 
 performance_report.html
-  * ACCURACY, PRECISION, RECALL, F1 on the saved predictions.
-  * Compare the accuracy here with the number pipeline.py printed on
-    the test set. If live numbers start falling well below it, the
-    model is degrading - retrain it on fresh data.
-""")
+- Shows classification metrics such as accuracy, precision, recall, and F1.
+- Compare these results with the test-set metrics from pipeline.py.
+- A large drop in performance may indicate model degradation and the need
+  to retrain with newer data.
+"""
+)

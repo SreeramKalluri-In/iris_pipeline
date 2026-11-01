@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Generated reports (written by monitor.py, ~3.5 MB each, regenerable)
+*_report.html
+
