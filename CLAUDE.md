@@ -11,21 +11,22 @@ The venv is uv-managed (`.venv/pyvenv.cfg` shows `uv = 0.11.14`). Prefer `uv run
 so the interpreter/lockfile stay in sync:
 
 ```bash
-uv run python pipeline.py      # Stage 1: train + evaluate, writes artifacts
-uv run streamlit run app.py    # Stage 2: live web app (Streamlit, default :8501)
-uv run python app_gradio.py    # Stage 2 alt: live web app (Gradio, listens :7860)
-uv run python monitor.py       # Stage 3: Evidently drift + performance reports
+uv run python pipeline.py          # Stage 1: train + evaluate, writes artifacts
+uv run python app.py               # Stage 2: live web app (Gradio, listens :7860)
+uv run streamlit run app_streamlit.py   # Stage 2 alt: Streamlit app (default :8501)
+uv run python monitor.py           # Stage 3: Evidently drift + performance reports
 ```
 
-Docker / Hugging Face Space (Stage 2 hosted):
-```bash
-docker build -t iris-space .
-docker run --rm -p 7860:7860 iris-space   # app listens on 7860, not 8501
-```
+Hugging Face Space (Stage 2 hosted): the repo pushes to the `space` remote
+(`https://huggingface.co/spaces/Sreeramky/iris_pipeline`). The Space is a
+Gradio Space: `README.md` frontmatter sets `sdk: gradio` +
+`app_file: app.py`, and deps come from `requirements.txt`. Gradio's default
+port 7860 is what the Space expects.
 
-`app_gradio.py` is a Gradio port of `app.py` for HF Spaces on the free CPU
-tier (zero GPU). Launch mode is detected automatically:
-- Local: `uv run python app_gradio.py` serves `127.0.0.1:7860` and opens a
+`app.py` is the Gradio app for HF Spaces on the free CPU tier (zero GPU);
+`app_streamlit.py` is the equivalent Streamlit port. Launch mode in `app.py`
+is detected automatically:
+- Local: `uv run python app.py` serves `127.0.0.1:7860` and opens a
   browser; `--port 7861` for a different port; `--self-test` runs two
   sample predictions headlessly (no server) for a quick logic check.
 - Space: when the `SPACE_ID` env var is present it binds `0.0.0.0:7860`
@@ -86,16 +87,16 @@ outputs — safe to delete/regenerate.
 
 Two parallel specs coexist (don't get confused):
 - `pyproject.toml` + `uv.lock` — the canonical local/dev spec, used by `uv run`.
-- `requirements.txt` — minimal set for the **HF Space** (Streamlit only).
-- `requirements-monitoring.txt` — minimal set for the **monitoring** step.
+- `requirements.txt` — minimal set for the **HF Space** (Gradio + the four
+  runtime deps). It is *not* used locally; `uv run` installs from
+  `pyproject.toml` instead.
 
 `main.py` is just a leftover scaffold stub (`print("Hello...")`), not part of
 the real pipeline.
 
 ## Repo hygiene
 
-Untracked junk to be aware of (not covered by `.gitignore`): the generated
-`*_report.html` files, and three empty stray files `0.20.0`, `1.0.0`, `1.28.0`
-(accidentally-named version strings, 0 bytes — safe to delete). `.gitignore`
-only excludes `.venv` and Python build artifacts, so generated outputs show up
-as untracked in `git status`.
+`.gitignore` covers `.venv`, Python build artifacts, and the generated
+`*_report.html` files (excluded since they're ~3.5 MB regenerable outputs).
+The old stray files `0.20.0`, `1.0.0`, `1.28.0` and `main.py`'s sibling
+scaffolding have been cleaned up; `main.py` remains as a leftover stub.

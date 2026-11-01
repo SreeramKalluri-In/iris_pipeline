@@ -1,16 +1,16 @@
 """
 Iris model web app — prediction + live drift monitoring panel.
-Gradio version (drop-in replacement for app.py's Streamlit UI).
+Gradio version (the Streamlit port lives in app_streamlit.py).
 
 HF Spaces runs this on the free CPU tier (zero GPUs) — Gradio is the
 Space type for that, and it listens on port 7860 by default.
 
 Test locally first:
-    uv run python app_gradio.py --self-test   # headless: runs two sample
-                                               # predictions, no server
-    uv run python app_gradio.py                # serves http://127.0.0.1:7860
-                                               # and opens your browser
-    uv run python app_gradio.py --port 7861    # custom local port
+    uv run python app.py --self-test   # headless: runs two sample
+                                        # predictions, no server
+    uv run python app.py                # serves http://127.0.0.1:7860
+                                        # and opens your browser
+    uv run python app.py --port 7861    # custom local port
 
 On a Space the same entry point automatically binds 0.0.0.0:7860
 (detected via the SPACE_ID env var Gradio sets in Spaces).
