@@ -3,11 +3,12 @@ title: Iris Predictor
 emoji: 🌸
 colorFrom: blue
 colorTo: green
-sdk: docker
-app_port: 7860
+sdk: gradio
+app_file: app_gradio.py
 pinned: false
 ---
 
 # Iris Predictor
 
-A Streamlit application for Iris species prediction.
+A Gradio application for Iris species prediction, with a live drift
+monitoring panel that compares your inputs against the training reference.
